@@ -13,6 +13,7 @@ import androidx.lifecycle.Observer
 import androidx.work.*
 import com.example.lab_week_08.worker.FirstWorker
 import com.example.lab_week_08.worker.SecondWorker
+import com.example.lab_week_08.worker.ThirdWorker
 
 class MainActivity : AppCompatActivity() {
 
@@ -29,7 +30,7 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        // ✅ Request notification permission (Android 13+)
+        //  Request notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -38,40 +39,50 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // ✅ Set constraints: only run when connected to network
         val networkConstraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val id = "001"
 
-        // ✅ First Worker Request
         val firstRequest = OneTimeWorkRequest.Builder(FirstWorker::class.java)
             .setConstraints(networkConstraints)
             .setInputData(getIdInputData(FirstWorker.INPUT_DATA_ID, id))
             .build()
 
-        // ✅ Second Worker Request
         val secondRequest = OneTimeWorkRequest.Builder(SecondWorker::class.java)
             .setConstraints(networkConstraints)
             .setInputData(getIdInputData(SecondWorker.INPUT_DATA_ID, id))
             .build()
 
-        // ✅ Execute sequentially
-        workManager.beginWith(firstRequest).then(secondRequest).enqueue()
+        val thirdRequest = OneTimeWorkRequest.Builder(ThirdWorker::class.java)
+            .setConstraints(networkConstraints)
+            .setInputData(getIdInputData(ThirdWorker.INPUT_DATA_ID, id))
+            .build()
 
-        // ✅ Observe First Worker result
+        //  Chain: First → Second → Third
+        workManager.beginWith(firstRequest)
+            .then(secondRequest)
+            .then(thirdRequest)
+            .enqueue()
+
+        // Observe
         workManager.getWorkInfoByIdLiveData(firstRequest.id).observe(this, Observer { info ->
-            if (info != null && info.state.isFinished) {
+            if (info != null && info.state.isFinished)
                 showResult("First process is done")
-            }
         })
 
-        // ✅ Observe Second Worker result
         workManager.getWorkInfoByIdLiveData(secondRequest.id).observe(this, Observer { info ->
             if (info != null && info.state.isFinished) {
                 showResult("Second process is done")
                 launchNotificationService()
+            }
+        })
+
+        workManager.getWorkInfoByIdLiveData(thirdRequest.id).observe(this, Observer { info ->
+            if (info != null && info.state.isFinished) {
+                showResult("Third process is done")
+                launchSecondNotificationService()
             }
         })
     }
@@ -83,20 +94,29 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
-    // ✅ Launch Foreground Service
+    //  First Foreground Service
     private fun launchNotificationService() {
         NotificationService.trackingCompletion.observe(this, Observer { Id ->
-            showResult("Process for Notification Channel ID $Id is done!")
+            showResult("NotificationService done for ID $Id")
         })
-
-        val serviceIntent = Intent(this, NotificationService::class.java).apply {
+        val intent = Intent(this, NotificationService::class.java).apply {
             putExtra(EXTRA_ID, "001")
         }
-        ContextCompat.startForegroundService(this, serviceIntent)
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    //  Second Foreground Service
+    private fun launchSecondNotificationService() {
+        SecondNotificationService.trackingCompletion.observe(this, Observer { Id ->
+            showResult("SecondNotificationService done for ID $Id")
+        })
+        val intent = Intent(this, SecondNotificationService::class.java).apply {
+            putExtra(EXTRA_ID, "001")
+        }
+        ContextCompat.startForegroundService(this, intent)
     }
 
     companion object {
         const val EXTRA_ID = "Id"
     }
 }
-
